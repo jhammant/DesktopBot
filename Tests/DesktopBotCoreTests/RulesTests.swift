@@ -40,6 +40,25 @@ struct RulesTests {
     }
 
     @Test
+    func protectedScreenshotCanHaveARecoverableArchiveCeiling() {
+        let config = Configuration(protectedMaximumAgeDays: 30)
+        let old = analyze(
+            ageDays: 31,
+            text: "The development login page says password",
+            configuration: config
+        )
+        let recent = analyze(
+            ageDays: 29,
+            text: "The development login page says password",
+            configuration: config
+        )
+
+        #expect(old.decision == .archive)
+        #expect(old.category == .protected)
+        #expect(recent.decision == .keep)
+    }
+
+    @Test
     func oldGenericScreenshotIsArchived() {
         let result = analyze(ageDays: 8, text: "A generic paragraph of readable text")
 
@@ -103,7 +122,8 @@ struct RulesTests {
     private func analyze(
         ageDays: Int,
         text: String?,
-        duplicate: Bool = false
+        duplicate: Bool = false,
+        configuration: Configuration = .default
     ) -> ScreenshotAnalysis {
         let created = Calendar.current.date(byAdding: .day, value: -ageDays, to: now)!
         let file = ScreenshotFile(
@@ -112,7 +132,7 @@ struct RulesTests {
             modifiedAt: created,
             size: 100
         )
-        return ScreenshotRules(configuration: .default).analyze(
+        return ScreenshotRules(configuration: configuration).analyze(
             file: file,
             now: now,
             recognizedText: text,

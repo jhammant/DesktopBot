@@ -119,6 +119,7 @@ public enum DesktopFileCategory: String, Codable, Sendable {
     case video
     case fonts
     case links
+    case folders
     case other
 }
 

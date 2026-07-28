@@ -4,15 +4,21 @@ public struct OtherFilesConfiguration: Codable, Sendable {
     public var enabled: Bool
     public var minimumAgeDays: Int
     public var archiveDirectory: String
+    public var includeDirectories: Bool?
+    public var directoryMinimumAgeDays: Int?
 
     public init(
         enabled: Bool = true,
         minimumAgeDays: Int = 30,
-        archiveDirectory: String = "~/Documents/DesktopBot Filing"
+        archiveDirectory: String = "~/Documents/DesktopBot Filing",
+        includeDirectories: Bool = false,
+        directoryMinimumAgeDays: Int = 7
     ) {
         self.enabled = enabled
         self.minimumAgeDays = minimumAgeDays
         self.archiveDirectory = archiveDirectory
+        self.includeDirectories = includeDirectories
+        self.directoryMinimumAgeDays = directoryMinimumAgeDays
     }
 
     public static var `default`: OtherFilesConfiguration {
@@ -77,6 +83,7 @@ public struct Configuration: Codable, Sendable {
     public var codingKeywords: [String]
     public var errorKeywords: [String]
     public var keepKeywords: [String]
+    public var protectedMaximumAgeDays: Int?
     public var otherFiles: OtherFilesConfiguration?
     public var machineFiles: MachineFilesConfiguration?
     public var folderOrganization: FolderOrganizationConfiguration?
@@ -164,6 +171,7 @@ public struct Configuration: Codable, Sendable {
             "serial number",
             "license key"
         ],
+        protectedMaximumAgeDays: Int? = nil,
         otherFiles: OtherFilesConfiguration? = .default,
         machineFiles: MachineFilesConfiguration? = .default,
         folderOrganization: FolderOrganizationConfiguration? = .default
@@ -181,6 +189,7 @@ public struct Configuration: Codable, Sendable {
         self.codingKeywords = codingKeywords
         self.errorKeywords = errorKeywords
         self.keepKeywords = keepKeywords
+        self.protectedMaximumAgeDays = protectedMaximumAgeDays
         self.otherFiles = otherFiles
         self.machineFiles = machineFiles
         self.folderOrganization = folderOrganization
@@ -215,6 +224,13 @@ public struct Configuration: Codable, Sendable {
         guard maxOCRImagesPerRun >= 0 else {
             throw DesktopBotError.invalidConfiguration("maxOCRImagesPerRun must be zero or greater")
         }
+        if let protectedMaximumAgeDays {
+            guard protectedMaximumAgeDays >= 0 else {
+                throw DesktopBotError.invalidConfiguration(
+                    "protectedMaximumAgeDays must be zero or greater"
+                )
+            }
+        }
         guard !sourceDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DesktopBotError.invalidConfiguration("sourceDirectory cannot be empty")
         }
@@ -232,6 +248,13 @@ public struct Configuration: Codable, Sendable {
                 throw DesktopBotError.invalidConfiguration(
                     "otherFiles.archiveDirectory cannot be empty"
                 )
+            }
+            if let directoryMinimumAgeDays = otherFiles.directoryMinimumAgeDays {
+                guard directoryMinimumAgeDays >= 0 else {
+                    throw DesktopBotError.invalidConfiguration(
+                        "otherFiles.directoryMinimumAgeDays must be zero or greater"
+                    )
+                }
             }
         }
         if let machineFiles {

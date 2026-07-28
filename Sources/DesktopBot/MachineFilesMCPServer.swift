@@ -59,7 +59,7 @@ final class MachineFilesMCPServer {
                     "capabilities": ["tools": ["listChanged": false]],
                     "serverInfo": [
                         "name": "desktopbot-machine-files",
-                        "version": "0.3.0"
+                        "version": "0.3.1"
                     ],
                     "instructions": """
                     Use file_search for a small candidate list, then file_excerpt with the same \

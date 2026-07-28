@@ -58,7 +58,7 @@ final class MCPServer {
                     ],
                     "serverInfo": [
                         "name": "desktopbot-screenshots",
-                        "version": "0.3.0"
+                        "version": "0.3.1"
                     ],
                     "instructions": """
                     Use screenshot_latest when the user refers to their latest or recent screenshot. \

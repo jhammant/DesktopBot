@@ -28,10 +28,13 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
         let archive = configuration.otherFilesArchiveURL()
         let keys: Set<URLResourceKey> = [
             .isRegularFileKey,
+            .isDirectoryKey,
             .isSymbolicLinkKey,
             .isHiddenKey,
             .creationDateKey,
-            .contentModificationDateKey
+            .contentModificationDateKey,
+            .isUbiquitousItemKey,
+            .ubiquitousItemDownloadingStatusKey
         ]
         let urls = try fileManager.contentsOfDirectory(
             at: source,
@@ -44,16 +47,21 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
 
         for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let values = try url.resourceValues(forKeys: keys)
-            guard values.isRegularFile == true,
+            let isDirectory = values.isDirectory == true
+            let includeDirectory = isDirectory && (policy.includeDirectories ?? false)
+            guard values.isRegularFile == true || includeDirectory,
                   values.isSymbolicLink != true,
                   values.isHidden != true,
-                  !screenshotDetector.isScreenshot(url) else {
+                  isDirectory || !screenshotDetector.isScreenshot(url) else {
                 continue
             }
 
             let modifiedAt = values.contentModificationDate ?? .distantPast
             let createdAt = values.creationDate ?? modifiedAt
             let lastTouched = max(createdAt, modifiedAt)
+            let minimumAgeDays = isDirectory
+                ? (policy.directoryMinimumAgeDays ?? policy.minimumAgeDays)
+                : policy.minimumAgeDays
             let ageDays = max(
                 0,
                 Calendar.current.dateComponents(
@@ -62,20 +70,24 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
                     to: referenceDate
                 ).day ?? 0
             )
-            let category = Self.category(forExtension: url.pathExtension.lowercased())
+            let category: DesktopFileCategory = isDirectory
+                ? .folders
+                : Self.category(forExtension: url.pathExtension.lowercased())
             var analysis = DesktopFileAnalysis(
                 sourcePath: url.path,
                 destinationPath: nil,
                 fileName: url.lastPathComponent,
                 ageDays: ageDays,
                 category: category,
-                decision: ageDays >= policy.minimumAgeDays ? .archive : .keep,
-                reasons: ageDays >= policy.minimumAgeDays
+                decision: ageDays >= minimumAgeDays ? .archive : .keep,
+                reasons: ageDays >= minimumAgeDays
                     ? [
-                        "loose Desktop file is at least \(policy.minimumAgeDays)d old",
-                        "classified by extension as \(category.rawValue)"
+                        "loose Desktop \(isDirectory ? "folder" : "file") is at least \(minimumAgeDays)d old",
+                        isDirectory
+                            ? "directory will be moved intact without inspecting its contents"
+                            : "classified by extension as \(category.rawValue)"
                     ]
-                    : ["newer than \(policy.minimumAgeDays)d"]
+                    : ["newer than \(minimumAgeDays)d"]
             )
 
             if analysis.decision == .archive {
@@ -95,7 +107,26 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
                         try fileManager.moveItem(at: url, to: destination)
                     } catch {
                         analysis.decision = .failed
-                        analysis.reasons.append("move failed: \(error.localizedDescription)")
+                        if values.isUbiquitousItem == true,
+                           values.ubiquitousItemDownloadingStatus
+                            != URLUbiquitousItemDownloadingStatus.current {
+                            do {
+                                try fileManager.startDownloadingUbiquitousItem(at: url)
+                                analysis.reasons.append(
+                                    "iCloud download requested; retry on the next run"
+                                )
+                            } catch let downloadError {
+                                analysis.reasons.append(
+                                    "iCloud download request failed: "
+                                        + downloadError.localizedDescription
+                                )
+                            }
+                        }
+                        let failure = error as NSError
+                        analysis.reasons.append(
+                            "move failed [\(failure.domain) \(failure.code)]: "
+                                + failure.localizedDescription
+                        )
                     }
                 }
             }
@@ -128,8 +159,11 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
             )
             .appendingPathComponent(category.rawValue)
         var candidate = directory.appendingPathComponent(source.lastPathComponent)
-        let stem = source.deletingPathExtension().lastPathComponent
-        let ext = source.pathExtension
+        let isDirectory = category == .folders
+        let stem = isDirectory
+            ? source.lastPathComponent
+            : source.deletingPathExtension().lastPathComponent
+        let ext = isDirectory ? "" : source.pathExtension
         var counter = 2
         while fileManager.fileExists(atPath: candidate.path) {
             let name = ext.isEmpty ? "\(stem)-\(counter)" : "\(stem)-\(counter).\(ext)"

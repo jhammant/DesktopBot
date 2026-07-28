@@ -60,7 +60,7 @@ final class FolderOrganizerMCPServer {
                     "capabilities": ["tools": ["listChanged": false]],
                     "serverInfo": [
                         "name": "desktopbot-folder-organizer",
-                        "version": "0.3.0"
+                        "version": "0.3.1"
                     ],
                     "instructions": """
                     Use folder_organize_preview first. Show the proposed moves to the user, then \

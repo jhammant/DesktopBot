@@ -51,7 +51,7 @@ struct DesktopBotCLI {
         case "help", "--help", "-h":
             printHelp()
         case "version", "--version":
-            print("desktopbot 0.3.0")
+            print("desktopbot 0.3.1")
         default:
             throw DesktopBotError.commandFailed(
                 "Unknown command '\(command)'. Run 'desktopbot help' for usage."

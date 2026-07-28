@@ -69,4 +69,56 @@ struct DesktopFileOrganizerTests {
         #expect(DesktopFileOrganizer.category(forExtension: "tsx") == .code)
         #expect(DesktopFileOrganizer.category(forExtension: "json") == .data)
     }
+
+    @Test
+    func optionallyArchivesOldTopLevelFoldersIntact() throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory
+            .appendingPathComponent("desktopbot-folder-files-\(UUID().uuidString)", isDirectory: true)
+        let desktop = root.appendingPathComponent("Desktop", isDirectory: true)
+        let archive = root.appendingPathComponent("Filing", isDirectory: true)
+        let folder = desktop.appendingPathComponent("generated-output", isDirectory: true)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let nested = folder.appendingPathComponent("result.txt")
+        try Data("preserve me".utf8).write(to: nested)
+        defer { try? manager.removeItem(at: root) }
+
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        try manager.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-10 * 86_400)],
+            ofItemAtPath: folder.path
+        )
+        let config = Configuration(
+            sourceDirectory: desktop.path,
+            archiveDirectory: root.appendingPathComponent("Screenshots").path,
+            otherFiles: OtherFilesConfiguration(
+                enabled: true,
+                minimumAgeDays: 30,
+                archiveDirectory: archive.path,
+                includeDirectories: true,
+                directoryMinimumAgeDays: 7
+            )
+        )
+        let organizer = DesktopFileOrganizer(
+            configuration: config,
+            now: { now },
+            auditLogURL: nil
+        )
+
+        let preview = try #require(try organizer.run(apply: false))
+        let item = try #require(preview.analyses.first)
+        #expect(item.category == .folders)
+        #expect(item.decision == .archive)
+        #expect(manager.fileExists(atPath: nested.path))
+
+        let applied = try #require(try organizer.run(apply: true))
+        let destination = try #require(applied.analyses.first?.destinationPath)
+        #expect(!manager.fileExists(atPath: folder.path))
+        #expect(
+            manager.fileExists(
+                atPath: URL(fileURLWithPath: destination)
+                    .appendingPathComponent("result.txt").path
+            )
+        )
+    }
 }

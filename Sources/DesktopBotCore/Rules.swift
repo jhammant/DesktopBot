@@ -24,13 +24,20 @@ public struct ScreenshotRules: Sendable {
         let keepMatches = matchingKeywords(configuration.keepKeywords, in: normalizedText)
         if !keepMatches.isEmpty {
             reasons.append("OCR found keep-safe text: \(keepMatches.prefix(3).joined(separator: ", "))")
+            let reachedMaximumAge = configuration.protectedMaximumAgeDays
+                .map { ageDays >= $0 } ?? false
+            if let maximumAge = configuration.protectedMaximumAgeDays, reachedMaximumAge {
+                reasons.append(
+                    "protected capture reached \(maximumAge)d maximum; moving to recoverable archive"
+                )
+            }
             return ScreenshotAnalysis(
                 sourcePath: file.url.path,
                 fileName: file.url.lastPathComponent,
                 ageDays: ageDays,
                 category: .protected,
-                score: 0,
-                decision: .keep,
+                score: reachedMaximumAge ? 200 : 0,
+                decision: reachedMaximumAge ? .archive : .keep,
                 reasons: reasons,
                 isExactDuplicate: isExactDuplicate,
                 ocrTextPreview: preview

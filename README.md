@@ -36,10 +36,31 @@ The default screenshot policy is deliberately quick:
 - receipts, tickets, credentials, recovery codes, and travel documents: kept
   for manual review.
 
+Protected captures stay indefinitely by default. Set
+`protectedMaximumAgeDays` to move older matches into the recoverable screenshot
+archive after a chosen review window; this still never deletes them.
+
 Loose non-screenshot files become eligible after 30 days. DesktopBot sorts them
 into documents, spreadsheets, presentations, archives, installers, code, data,
 images, audio, video, fonts, links, or other. It skips folders, hidden files,
 symlinks, and recently modified files.
+
+Top-level Desktop folders remain untouched by default. They can be moved intact
+into the dated filing archive—without recursively inspecting or reorganizing
+their contents—with an explicit policy:
+
+```json
+"otherFiles": {
+  "enabled": true,
+  "minimumAgeDays": 7,
+  "archiveDirectory": "~/Documents/DesktopBot Filing",
+  "includeDirectories": true,
+  "directoryMinimumAgeDays": 3
+}
+```
+
+iCloud placeholders that are not locally available are requested for download
+and retried on the next run instead of being silently abandoned.
 
 ## Organize a cluttered staging folder
 
