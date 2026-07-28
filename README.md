@@ -19,8 +19,28 @@ No cleanup command permanently deletes anything.
 Screenshots go to:
 
 ```text
-~/Pictures/DesktopBot Review/YYYY/MM/category/
+~/Pictures/DesktopBot Review/YYYY/MM/importance/category/
 ```
+
+Importance is classified independently of subject:
+
+- `sensitive` — protected OCR signals such as credentials, recovery codes, or
+  two-factor information;
+- `important` — explicit action, deadline, decision, production, security, or
+  incident signals;
+- `useful` — coding, error, website, and substantial text references;
+- `routine` — duplicates, mostly visual captures, and unclassified screenshots.
+
+Archived captures are renamed to a searchable form such as:
+
+```text
+2026-07-28_091500-important-error-vite-dev-server-failed.png
+```
+
+The name combines capture time, importance, subject category, and up to four
+safe OCR topic words. Sensitive captures never put OCR-derived text into the
+filename. Both renaming and importance folders can be disabled with
+`renameArchivedScreenshots` and `groupScreenshotsByImportance`.
 
 Other old files go to:
 
@@ -176,6 +196,9 @@ It exposes:
 - `screenshot_search` — searches filenames and the local OCR catalog;
 - `screenshot_get` — returns a selected image and OCR;
 - `screenshot_archive` — moves one Desktop capture into the review archive.
+
+List and search results include `importance`; `screenshot_list` can filter by
+`sensitive`, `important`, `useful`, or `routine`.
 
 The OCR catalog is stored locally at:
 

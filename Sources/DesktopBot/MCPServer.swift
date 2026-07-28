@@ -58,7 +58,7 @@ final class MCPServer {
                     ],
                     "serverInfo": [
                         "name": "desktopbot-screenshots",
-                        "version": "0.3.1"
+                        "version": "0.4.0"
                     ],
                     "instructions": """
                     Use screenshot_latest when the user refers to their latest or recent screenshot. \
@@ -120,10 +120,12 @@ final class MCPServer {
                 let limit = integer(arguments["limit"], default: 20, range: 1...100)
                 let location = try optionalLocation(arguments["location"])
                 let category = try optionalCategory(arguments["category"])
+                let importance = try optionalImportance(arguments["importance"])
                 let records = try catalog.list(
                     limit: limit,
                     location: location,
-                    category: category
+                    category: category,
+                    importance: importance
                 )
                 return jsonResult(records.map { recordDictionary($0, ocrLimit: 500) })
 
@@ -213,6 +215,11 @@ final class MCPServer {
                             "type": "string",
                             "enum": ScreenshotCategory.allMCPValues,
                             "description": "Optional classification filter."
+                        ],
+                        "importance": [
+                            "type": "string",
+                            "enum": ScreenshotImportance.allMCPValues,
+                            "description": "Optional sensitive, important, useful, or routine filter."
                         ]
                     ]
                 ),
@@ -348,6 +355,9 @@ final class MCPServer {
         if let category = record.category {
             value["category"] = category.rawValue
         }
+        if let importance = record.importance {
+            value["importance"] = importance.rawValue
+        }
         if let text = record.ocrText {
             value["ocrText"] = String(text.prefix(ocrLimit))
             value["ocrTextTruncated"] = text.count > ocrLimit
@@ -444,6 +454,14 @@ final class MCPServer {
         return category
     }
 
+    private func optionalImportance(_ value: Any?) throws -> ScreenshotImportance? {
+        guard let value = value as? String else { return nil }
+        guard let importance = ScreenshotImportance(rawValue: value) else {
+            throw DesktopBotError.commandFailed("Unknown screenshot importance: \(value)")
+        }
+        return importance
+    }
+
     private func integer(_ value: Any?, default defaultValue: Int, range: ClosedRange<Int>) -> Int {
         let parsed = (value as? NSNumber)?.intValue ?? defaultValue
         return min(max(parsed, range.lowerBound), range.upperBound)
@@ -493,6 +511,17 @@ private extension ScreenshotCategory {
             .visual,
             .other,
             .unreadable
+        ].map(\.rawValue)
+    }
+}
+
+private extension ScreenshotImportance {
+    static var allMCPValues: [String] {
+        [
+            ScreenshotImportance.sensitive,
+            .important,
+            .useful,
+            .routine
         ].map(\.rawValue)
     }
 }

@@ -11,7 +11,19 @@ struct RulesTests {
 
         #expect(result.decision == .archive)
         #expect(result.category == .error)
+        #expect(result.importance == .useful)
         #expect(result.score >= 70)
+    }
+
+    @Test
+    func explicitImportanceSignalsCreateAnImportantCategory() {
+        let result = analyze(
+            ageDays: 2,
+            text: "Production security incident: action required before deadline"
+        )
+
+        #expect(result.importance == .important)
+        #expect(result.reasons.contains { $0.contains("importance signal") })
     }
 
     @Test
@@ -36,6 +48,7 @@ struct RulesTests {
 
         #expect(result.decision == .keep)
         #expect(result.category == .protected)
+        #expect(result.importance == .sensitive)
         #expect(result.score == 0)
     }
 

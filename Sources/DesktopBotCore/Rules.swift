@@ -36,6 +36,7 @@ public struct ScreenshotRules: Sendable {
                 fileName: file.url.lastPathComponent,
                 ageDays: ageDays,
                 category: .protected,
+                importance: .sensitive,
                 score: reachedMaximumAge ? 200 : 0,
                 decision: reachedMaximumAge ? .archive : .keep,
                 reasons: reasons,
@@ -61,6 +62,29 @@ public struct ScreenshotRules: Sendable {
             category = .text
         } else {
             category = .other
+        }
+        let importantMatches = matchingKeywords(
+            configuration.importantKeywords ?? Configuration.defaultImportantKeywords,
+            in: normalizedText
+        )
+        let importance: ScreenshotImportance
+        if !importantMatches.isEmpty {
+            importance = .important
+            reasons.append(
+                "OCR found importance signal: "
+                    + importantMatches.prefix(3).joined(separator: ", ")
+            )
+        } else if isExactDuplicate {
+            importance = .routine
+        } else {
+            switch category {
+            case .coding, .error, .web, .text:
+                importance = .useful
+            case .protected:
+                importance = .sensitive
+            case .visual, .other, .unreadable:
+                importance = .routine
+            }
         }
 
         var score = 0
@@ -121,6 +145,7 @@ public struct ScreenshotRules: Sendable {
             fileName: file.url.lastPathComponent,
             ageDays: ageDays,
             category: category,
+            importance: importance,
             score: score,
             decision: decision,
             reasons: reasons,

@@ -38,8 +38,11 @@ struct ScreenshotCatalogTests {
 
         let archived = try catalog.archive(identifier: match.id)
         #expect(archived.location == .archive)
-        #expect(archived.path.contains("/error/"))
+        #expect(archived.importance == .useful)
+        #expect(archived.path.contains("/useful/error/"))
+        #expect(archived.fileName.contains("-useful-error-vite-dev-server"))
         #expect(!manager.fileExists(atPath: screenshot.path))
         #expect(manager.fileExists(atPath: archived.path))
     }
+
 }

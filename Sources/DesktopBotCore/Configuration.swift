@@ -83,6 +83,9 @@ public struct Configuration: Codable, Sendable {
     public var codingKeywords: [String]
     public var errorKeywords: [String]
     public var keepKeywords: [String]
+    public var importantKeywords: [String]?
+    public var renameArchivedScreenshots: Bool?
+    public var groupScreenshotsByImportance: Bool?
     public var protectedMaximumAgeDays: Int?
     public var otherFiles: OtherFilesConfiguration?
     public var machineFiles: MachineFilesConfiguration?
@@ -171,6 +174,9 @@ public struct Configuration: Codable, Sendable {
             "serial number",
             "license key"
         ],
+        importantKeywords: [String]? = Configuration.defaultImportantKeywords,
+        renameArchivedScreenshots: Bool = true,
+        groupScreenshotsByImportance: Bool = true,
         protectedMaximumAgeDays: Int? = nil,
         otherFiles: OtherFilesConfiguration? = .default,
         machineFiles: MachineFilesConfiguration? = .default,
@@ -189,6 +195,9 @@ public struct Configuration: Codable, Sendable {
         self.codingKeywords = codingKeywords
         self.errorKeywords = errorKeywords
         self.keepKeywords = keepKeywords
+        self.importantKeywords = importantKeywords
+        self.renameArchivedScreenshots = renameArchivedScreenshots
+        self.groupScreenshotsByImportance = groupScreenshotsByImportance
         self.protectedMaximumAgeDays = protectedMaximumAgeDays
         self.otherFiles = otherFiles
         self.machineFiles = machineFiles
@@ -197,6 +206,26 @@ public struct Configuration: Codable, Sendable {
 
     public static var `default`: Configuration {
         Configuration()
+    }
+
+    public static var defaultImportantKeywords: [String] {
+        [
+            "important",
+            "urgent",
+            "action required",
+            "deadline",
+            "decision",
+            "approved",
+            "approval",
+            "follow up",
+            "follow-up",
+            "contract",
+            "proposal",
+            "production",
+            "security",
+            "vulnerability",
+            "incident"
+        ]
     }
 
     public static var defaultURL: URL {

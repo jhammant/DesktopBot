@@ -11,6 +11,13 @@ public enum ScreenshotCategory: String, Codable, Sendable {
     case unreadable
 }
 
+public enum ScreenshotImportance: String, Codable, Sendable {
+    case sensitive
+    case important
+    case useful
+    case routine
+}
+
 public enum CleanupDecision: String, Codable, Sendable {
     case archive
     case keep
@@ -38,6 +45,7 @@ public struct ScreenshotAnalysis: Codable, Sendable {
     public let fileName: String
     public let ageDays: Int
     public let category: ScreenshotCategory
+    public let importance: ScreenshotImportance
     public let score: Int
     public var decision: CleanupDecision
     public var reasons: [String]
@@ -50,6 +58,7 @@ public struct ScreenshotAnalysis: Codable, Sendable {
         fileName: String,
         ageDays: Int,
         category: ScreenshotCategory,
+        importance: ScreenshotImportance = .routine,
         score: Int,
         decision: CleanupDecision,
         reasons: [String],
@@ -61,6 +70,7 @@ public struct ScreenshotAnalysis: Codable, Sendable {
         self.fileName = fileName
         self.ageDays = ageDays
         self.category = category
+        self.importance = importance
         self.score = score
         self.decision = decision
         self.reasons = reasons

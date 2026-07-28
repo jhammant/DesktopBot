@@ -51,7 +51,7 @@ struct DesktopBotCLI {
         case "help", "--help", "-h":
             printHelp()
         case "version", "--version":
-            print("desktopbot 0.3.1")
+            print("desktopbot 0.4.0")
         default:
             throw DesktopBotError.commandFailed(
                 "Unknown command '\(command)'. Run 'desktopbot help' for usage."
@@ -311,7 +311,8 @@ struct DesktopBotCLI {
             for item in summary.analyses {
                 let action = item.decision.rawValue.uppercased()
                 print(
-                    "\(action) [\(item.score)] [\(item.category.rawValue)] "
+                    "\(action) [\(item.score)] [\(item.importance.rawValue)] "
+                    + "[\(item.category.rawValue)] "
                     + "\(item.fileName) — \(item.reasons.joined(separator: "; "))"
                 )
                 if item.decision == .archive, let destination = item.destinationPath {

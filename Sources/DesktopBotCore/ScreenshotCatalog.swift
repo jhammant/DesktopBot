@@ -15,6 +15,7 @@ public struct ScreenshotRecord: Codable, Sendable {
     public var size: Int64
     public var location: ScreenshotLocation
     public var category: ScreenshotCategory?
+    public var importance: ScreenshotImportance?
     public var ocrText: String?
 
     public init(
@@ -26,6 +27,7 @@ public struct ScreenshotRecord: Codable, Sendable {
         size: Int64,
         location: ScreenshotLocation,
         category: ScreenshotCategory?,
+        importance: ScreenshotImportance? = nil,
         ocrText: String?
     ) {
         self.id = id
@@ -36,6 +38,7 @@ public struct ScreenshotRecord: Codable, Sendable {
         self.size = size
         self.location = location
         self.category = category
+        self.importance = importance
         self.ocrText = ocrText
     }
 
@@ -71,11 +74,13 @@ public final class ScreenshotCatalog: @unchecked Sendable {
     public func list(
         limit: Int = 20,
         location: ScreenshotLocation? = nil,
-        category: ScreenshotCategory? = nil
+        category: ScreenshotCategory? = nil,
+        importance: ScreenshotImportance? = nil
     ) throws -> [ScreenshotRecord] {
         try discover()
             .filter { location == nil || $0.location == location }
             .filter { category == nil || $0.category == category }
+            .filter { importance == nil || $0.importance == importance }
             .sorted { $0.createdAt > $1.createdAt }
             .prefix(Self.clampedLimit(limit))
             .map { $0 }
@@ -102,14 +107,18 @@ public final class ScreenshotCatalog: @unchecked Sendable {
         }) else {
             return nil
         }
-        guard refreshOCR, records[index].ocrText == nil else {
+        guard refreshOCR,
+              records[index].ocrText == nil || records[index].importance == nil else {
             return records[index]
         }
 
         do {
-            let text = try textRecognizer.recognizeText(in: records[index].url)
+            let text = try records[index].ocrText
+                ?? textRecognizer.recognizeText(in: records[index].url)
             records[index].ocrText = text
-            records[index].category = category(for: records[index], text: text)
+            let analysis = analysis(for: records[index], text: text)
+            records[index].category = analysis.category
+            records[index].importance = analysis.importance
             try writeIndex(records)
         } catch {
             records[index].category = records[index].category ?? .unreadable
@@ -153,12 +162,21 @@ public final class ScreenshotCatalog: @unchecked Sendable {
             0,
             maxOCRItems ?? configuration.maxOCRImagesPerRun
         )
-        for index in records.indices where records[index].ocrText == nil && remaining > 0 {
-            remaining -= 1
+        for index in records.indices
+        where records[index].importance == nil || records[index].ocrText == nil {
             do {
-                let text = try textRecognizer.recognizeText(in: records[index].url)
+                let text: String
+                if let existingText = records[index].ocrText {
+                    text = existingText
+                } else {
+                    guard remaining > 0 else { continue }
+                    remaining -= 1
+                    text = try textRecognizer.recognizeText(in: records[index].url)
+                }
                 records[index].ocrText = text
-                records[index].category = category(for: records[index], text: text)
+                let analysis = analysis(for: records[index], text: text)
+                records[index].category = analysis.category
+                records[index].importance = analysis.importance
             } catch {
                 records[index].category = records[index].category ?? .unreadable
             }
@@ -186,9 +204,13 @@ public final class ScreenshotCatalog: @unchecked Sendable {
         }
 
         let category = record.category ?? .other
+        let importance = record.importance
+            ?? ScreenshotArchiveNaming.defaultImportance(for: category)
         let destination = uniqueDestination(
             for: source,
             category: category,
+            importance: importance,
+            recognizedText: record.ocrText,
             referenceDate: record.createdAt
         )
         try fileManager.createDirectory(
@@ -206,6 +228,7 @@ public final class ScreenshotCatalog: @unchecked Sendable {
             size: record.size,
             location: .archive,
             category: record.category,
+            importance: importance,
             ocrText: record.ocrText
         )
         var records = try discover().filter { $0.path != destination.path }
@@ -261,11 +284,17 @@ public final class ScreenshotCatalog: @unchecked Sendable {
                 let folderCategory = ScreenshotCategory(
                     rawValue: url.deletingLastPathComponent().lastPathComponent
                 )
+                let importanceFolder = url
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .lastPathComponent
+                let folderImportance = ScreenshotImportance(rawValue: importanceFolder)
                 records.append(
                     makeRecord(
                         file: file,
                         location: .archive,
                         category: folderCategory,
+                        importance: folderImportance,
                         cached: cached[url.path]
                     )
                 )
@@ -278,10 +307,13 @@ public final class ScreenshotCatalog: @unchecked Sendable {
         file: ScreenshotFile,
         location: ScreenshotLocation,
         category: ScreenshotCategory?,
+        importance: ScreenshotImportance? = nil,
         cached: ScreenshotRecord?
     ) -> ScreenshotRecord {
-        let unchanged = cached?.modifiedAt == file.modifiedAt
-            && cached?.size == file.size
+        let unchanged = cached.map {
+            abs($0.modifiedAt.timeIntervalSince(file.modifiedAt)) < 1
+                && $0.size == file.size
+        } ?? false
         return ScreenshotRecord(
             id: Self.identifier(for: file.url.path),
             path: file.url.path,
@@ -291,11 +323,17 @@ public final class ScreenshotCatalog: @unchecked Sendable {
             size: file.size,
             location: location,
             category: unchanged ? (cached?.category ?? category) : category,
+            importance: unchanged
+                ? (cached?.importance ?? importance)
+                : importance,
             ocrText: unchanged ? cached?.ocrText : nil
         )
     }
 
-    private func category(for record: ScreenshotRecord, text: String) -> ScreenshotCategory {
+    private func analysis(
+        for record: ScreenshotRecord,
+        text: String
+    ) -> ScreenshotAnalysis {
         let file = ScreenshotFile(
             url: record.url,
             createdAt: record.createdAt,
@@ -307,7 +345,7 @@ public final class ScreenshotCatalog: @unchecked Sendable {
             now: Date(),
             recognizedText: text,
             isExactDuplicate: false
-        ).category
+        )
     }
 
     private func loadIndex() -> [ScreenshotRecord] {
@@ -335,18 +373,29 @@ public final class ScreenshotCatalog: @unchecked Sendable {
     private func uniqueDestination(
         for source: URL,
         category: ScreenshotCategory,
+        importance: ScreenshotImportance,
+        recognizedText: String?,
         referenceDate: Date
     ) -> URL {
-        let calendar = Calendar.current
-        let directory = configuration.archiveURL()
-            .appendingPathComponent(String(calendar.component(.year, from: referenceDate)))
-            .appendingPathComponent(
-                String(format: "%02d", calendar.component(.month, from: referenceDate))
-            )
-            .appendingPathComponent(category.rawValue)
-        var candidate = directory.appendingPathComponent(source.lastPathComponent)
-        let stem = source.deletingPathExtension().lastPathComponent
-        let ext = source.pathExtension
+        let directory = ScreenshotArchiveNaming.directory(
+            archiveRoot: configuration.archiveURL(),
+            referenceDate: referenceDate,
+            category: category,
+            importance: importance,
+            groupByImportance: configuration.groupScreenshotsByImportance ?? true
+        )
+        let name = ScreenshotArchiveNaming.fileName(
+            source: source,
+            referenceDate: referenceDate,
+            category: category,
+            importance: importance,
+            recognizedText: recognizedText,
+            rename: configuration.renameArchivedScreenshots ?? true
+        )
+        var candidate = directory.appendingPathComponent(name)
+        let desired = URL(fileURLWithPath: name)
+        let stem = desired.deletingPathExtension().lastPathComponent
+        let ext = desired.pathExtension
         var counter = 2
         while fileManager.fileExists(atPath: candidate.path) {
             let name = ext.isEmpty ? "\(stem)-\(counter)" : "\(stem)-\(counter).\(ext)"

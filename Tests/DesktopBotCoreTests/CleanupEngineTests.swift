@@ -39,6 +39,14 @@ struct CleanupEngineTests {
         #expect(applied.archiveCount == 1)
         #expect(!manager.fileExists(atPath: screenshot.path))
         #expect(manager.fileExists(atPath: applied.analyses[0].destinationPath!))
+        #expect(applied.analyses[0].importance == .routine)
+        #expect(
+            applied.analyses[0].destinationPath?.contains("/routine/unreadable/") == true
+        )
+        #expect(
+            URL(fileURLWithPath: applied.analyses[0].destinationPath!)
+                .lastPathComponent.contains("-routine-unreadable") == true
+        )
         #expect(manager.fileExists(atPath: root.appendingPathComponent("audit.jsonl").path))
     }
 }

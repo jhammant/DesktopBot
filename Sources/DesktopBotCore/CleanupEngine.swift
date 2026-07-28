@@ -74,6 +74,8 @@ public final class CleanupEngine: @unchecked Sendable {
                 let destination = uniqueDestination(
                     for: file,
                     category: analysis.category,
+                    importance: analysis.importance,
+                    recognizedText: recognizedText,
                     archiveRoot: archive,
                     referenceDate: file.createdAt
                 )
@@ -145,21 +147,32 @@ public final class CleanupEngine: @unchecked Sendable {
     private func uniqueDestination(
         for file: ScreenshotFile,
         category: ScreenshotCategory,
+        importance: ScreenshotImportance,
+        recognizedText: String?,
         archiveRoot: URL,
         referenceDate: Date
     ) -> URL {
-        let calendar = Calendar.current
-        let year = String(calendar.component(.year, from: referenceDate))
-        let month = String(format: "%02d", calendar.component(.month, from: referenceDate))
-        let directory = archiveRoot
-            .appendingPathComponent(year, isDirectory: true)
-            .appendingPathComponent(month, isDirectory: true)
-            .appendingPathComponent(category.rawValue, isDirectory: true)
-        let original = directory.appendingPathComponent(file.url.lastPathComponent)
+        let directory = ScreenshotArchiveNaming.directory(
+            archiveRoot: archiveRoot,
+            referenceDate: referenceDate,
+            category: category,
+            importance: importance,
+            groupByImportance: configuration.groupScreenshotsByImportance ?? true
+        )
+        let name = ScreenshotArchiveNaming.fileName(
+            source: file.url,
+            referenceDate: referenceDate,
+            category: category,
+            importance: importance,
+            recognizedText: recognizedText,
+            rename: configuration.renameArchivedScreenshots ?? true
+        )
+        let original = directory.appendingPathComponent(name)
         guard fileManager.fileExists(atPath: original.path) else { return original }
 
-        let stem = file.url.deletingPathExtension().lastPathComponent
-        let ext = file.url.pathExtension
+        let desired = URL(fileURLWithPath: name)
+        let stem = desired.deletingPathExtension().lastPathComponent
+        let ext = desired.pathExtension
         var counter = 2
         while true {
             let suffix = ext.isEmpty ? "\(stem)-\(counter)" : "\(stem)-\(counter).\(ext)"
