@@ -1,24 +1,39 @@
 import Foundation
 
+/// A scratch folder for things made to be shared (exports, renders): the folder itself
+/// is never archived, and anything inside it older than `maxAgeDays` goes to the Trash.
+public struct DropFolderConfiguration: Codable, Sendable {
+    public var path: String
+    public var maxAgeDays: Int
+
+    public init(path: String, maxAgeDays: Int = 7) {
+        self.path = path
+        self.maxAgeDays = maxAgeDays
+    }
+}
+
 public struct OtherFilesConfiguration: Codable, Sendable {
     public var enabled: Bool
     public var minimumAgeDays: Int
     public var archiveDirectory: String
     public var includeDirectories: Bool?
     public var directoryMinimumAgeDays: Int?
+    public var dropFolders: [DropFolderConfiguration]?
 
     public init(
         enabled: Bool = true,
         minimumAgeDays: Int = 30,
         archiveDirectory: String = "~/Documents/DesktopBot Filing",
         includeDirectories: Bool = false,
-        directoryMinimumAgeDays: Int = 7
+        directoryMinimumAgeDays: Int = 7,
+        dropFolders: [DropFolderConfiguration]? = nil
     ) {
         self.enabled = enabled
         self.minimumAgeDays = minimumAgeDays
         self.archiveDirectory = archiveDirectory
         self.includeDirectories = includeDirectories
         self.directoryMinimumAgeDays = directoryMinimumAgeDays
+        self.dropFolders = dropFolders
     }
 
     public static var `default`: OtherFilesConfiguration {
@@ -285,6 +300,18 @@ public struct Configuration: Codable, Sendable {
                     )
                 }
             }
+            for drop in otherFiles.dropFolders ?? [] {
+                guard !drop.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw DesktopBotError.invalidConfiguration(
+                        "otherFiles.dropFolders paths cannot be empty"
+                    )
+                }
+                guard drop.maxAgeDays >= 1 else {
+                    throw DesktopBotError.invalidConfiguration(
+                        "otherFiles.dropFolders maxAgeDays must be at least 1"
+                    )
+                }
+            }
         }
         if let machineFiles {
             guard !machineFiles.allowedRoots.isEmpty,
@@ -392,6 +419,12 @@ public struct Configuration: Codable, Sendable {
         var data = try encoder.encode(self)
         data.append(0x0A)
         try data.write(to: url, options: .atomic)
+    }
+
+    public func dropFolderURLs(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [(url: URL, maxAgeDays: Int)] {
+        (otherFiles?.dropFolders ?? []).map { (Self.expand(path: $0.path, home: home), $0.maxAgeDays) }
     }
 
     private static func expand(path: String, home: URL) -> URL {

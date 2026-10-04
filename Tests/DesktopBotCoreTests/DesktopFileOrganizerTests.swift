@@ -121,4 +121,74 @@ struct DesktopFileOrganizerTests {
             )
         )
     }
+
+    @Test
+    func dropFolderStaysAndItsOldFilesGoToTheTrash() throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory
+            .appendingPathComponent("desktopbot-drop-\(UUID().uuidString)", isDirectory: true)
+        let desktop = root.appendingPathComponent("Desktop", isDirectory: true)
+        let drop = desktop.appendingPathComponent("tmp", isDirectory: true)
+        let fakeTrash = root.appendingPathComponent("Trash", isDirectory: true)
+        try manager.createDirectory(at: drop, withIntermediateDirectories: true)
+        try manager.createDirectory(at: fakeTrash, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: root) }
+
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let oldVideo = drop.appendingPathComponent("old-demo.mp4")
+        let newVideo = drop.appendingPathComponent("new-demo.mp4")
+        try Data("old".utf8).write(to: oldVideo)
+        try Data("new".utf8).write(to: newVideo)
+        for (url, days) in [(oldVideo, 9.0), (newVideo, 2.0), (drop, 30.0)] {
+            try manager.setAttributes(
+                [
+                    .creationDate: now.addingTimeInterval(-days * 86_400),
+                    .modificationDate: now.addingTimeInterval(-days * 86_400)
+                ],
+                ofItemAtPath: url.path
+            )
+        }
+
+        let config = Configuration(
+            sourceDirectory: desktop.path,
+            archiveDirectory: root.appendingPathComponent("Screenshots").path,
+            otherFiles: OtherFilesConfiguration(
+                enabled: true,
+                minimumAgeDays: 7,
+                archiveDirectory: root.appendingPathComponent("Filing").path,
+                includeDirectories: true,
+                directoryMinimumAgeDays: 3,
+                dropFolders: [DropFolderConfiguration(path: drop.path, maxAgeDays: 7)]
+            )
+        )
+        let organizer = DesktopFileOrganizer(
+            configuration: config,
+            now: { now },
+            auditLogURL: root.appendingPathComponent("audit.jsonl"),
+            trashItem: { url in
+                let target = fakeTrash.appendingPathComponent(url.lastPathComponent)
+                try FileManager.default.moveItem(at: url, to: target)
+                return target
+            }
+        )
+
+        let applied = try #require(try organizer.run(apply: true))
+
+        #expect(manager.fileExists(atPath: drop.path))                 // the folder isn't archived
+        #expect(!manager.fileExists(atPath: oldVideo.path))            // old file went to the Trash
+        #expect(manager.fileExists(atPath: fakeTrash.appendingPathComponent("old-demo.mp4").path))
+        #expect(manager.fileExists(atPath: newVideo.path))             // recent file stays
+        #expect(applied.analyses.allSatisfy { $0.fileName != "tmp" })
+        let trashed = try #require(applied.analyses.first { $0.fileName == "tmp/old-demo.mp4" })
+        #expect(trashed.decision == .archive)
+        #expect(trashed.reasons.first?.contains("Trash") == true)
+    }
+
+    @Test
+    func dropFolderAgeMustBeAtLeastADay() {
+        let config = Configuration(
+            otherFiles: OtherFilesConfiguration(dropFolders: [DropFolderConfiguration(path: "~/Desktop/tmp", maxAgeDays: 0)])
+        )
+        #expect(throws: DesktopBotError.self) { try config.validated() }
+    }
 }

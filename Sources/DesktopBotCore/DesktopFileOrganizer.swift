@@ -5,18 +5,28 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
     private let fileManager: FileManager
     private let now: @Sendable () -> Date
     private let auditLogURL: URL?
+    private let trashItem: @Sendable (URL) throws -> URL?
 
     public init(
         configuration: Configuration,
         fileManager: FileManager = .default,
         now: @escaping @Sendable () -> Date = Date.init,
         auditLogURL: URL? = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/DesktopBot/other-files-audit.jsonl")
+            .appendingPathComponent("Library/Logs/DesktopBot/other-files-audit.jsonl"),
+        trashItem: @escaping @Sendable (URL) throws -> URL? = DesktopFileOrganizer.moveToTrash
     ) {
         self.configuration = configuration
         self.fileManager = fileManager
         self.now = now
         self.auditLogURL = auditLogURL
+        self.trashItem = trashItem
+    }
+
+    /// Moves an item to the user's Trash (recoverable) and returns where it went.
+    public static func moveToTrash(_ url: URL) throws -> URL? {
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+        return trashed as URL?
     }
 
     public func run(apply: Bool) throws -> OtherFilesRunSummary? {
@@ -44,8 +54,13 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
         let screenshotDetector = ScreenshotDetector(configuration: configuration)
         let referenceDate = now()
         var analyses: [DesktopFileAnalysis] = []
+        let dropFolders = configuration.dropFolderURLs()
+        let dropPaths = Set(dropFolders.map { $0.url.standardizedFileURL.path })
 
         for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            if dropPaths.contains(url.standardizedFileURL.path) {
+                continue  // a drop folder stays put; its contents are handled below
+            }
             let values = try url.resourceValues(forKeys: keys)
             let isDirectory = values.isDirectory == true
             let includeDirectory = isDirectory && (policy.includeDirectories ?? false)
@@ -133,6 +148,11 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
             analyses.append(analysis)
         }
 
+        for drop in dropFolders {
+            analyses += try emptyDropFolder(drop.url, maxAgeDays: drop.maxAgeDays,
+                                            referenceDate: referenceDate, apply: apply)
+        }
+
         let summary = OtherFilesRunSummary(
             dryRun: !apply,
             sourceDirectory: source.path,
@@ -143,6 +163,63 @@ public final class DesktopFileOrganizer: @unchecked Sendable {
             try appendAudit(summary, to: auditLogURL)
         }
         return summary
+    }
+
+    /// Trash the direct children of a drop folder that have sat there for `maxAgeDays`.
+    /// Age counts from the latest of when an item was added, created or modified.
+    private func emptyDropFolder(
+        _ folder: URL,
+        maxAgeDays: Int,
+        referenceDate: Date,
+        apply: Bool
+    ) throws -> [DesktopFileAnalysis] {
+        guard fileManager.fileExists(atPath: folder.path) else {
+            return []
+        }
+        let keys: [URLResourceKey] = [
+            .isDirectoryKey, .creationDateKey, .contentModificationDateKey, .addedToDirectoryDateKey
+        ]
+        let items = try fileManager.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        )
+        var analyses: [DesktopFileAnalysis] = []
+        for url in items.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let values = try url.resourceValues(forKeys: Set(keys))
+            let dates = [values.addedToDirectoryDate, values.creationDate, values.contentModificationDate]
+            let lastTouched = dates.compactMap { $0 }.max() ?? .distantPast
+            let ageDays = max(
+                0,
+                Calendar.current.dateComponents([.day], from: lastTouched, to: referenceDate).day ?? 0
+            )
+            let isDirectory = values.isDirectory == true
+            let old = ageDays >= maxAgeDays
+            var analysis = DesktopFileAnalysis(
+                sourcePath: url.path,
+                destinationPath: nil,
+                fileName: "\(folder.lastPathComponent)/\(url.lastPathComponent)",
+                ageDays: ageDays,
+                category: isDirectory ? .folders : Self.category(forExtension: url.pathExtension.lowercased()),
+                decision: old ? .archive : .keep,
+                reasons: old
+                    ? ["in drop folder \(folder.lastPathComponent) for \(maxAgeDays)d or more: moved to the Trash"]
+                    : ["in drop folder \(folder.lastPathComponent), newer than \(maxAgeDays)d"]
+            )
+            if old && apply {
+                do {
+                    analysis.destinationPath = try trashItem(url)?.path
+                } catch {
+                    let failure = error as NSError
+                    analysis.decision = .failed
+                    analysis.reasons.append(
+                        "trash failed [\(failure.domain) \(failure.code)]: " + failure.localizedDescription
+                    )
+                }
+            }
+            analyses.append(analysis)
+        }
+        return analyses
     }
 
     private func uniqueDestination(

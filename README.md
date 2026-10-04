@@ -82,6 +82,16 @@ their contents—with an explicit policy:
 iCloud placeholders that are not locally available are requested for download
 and retried on the next run instead of being silently abandoned.
 
+A drop folder is a scratch folder for things you make to share, such as exports and
+renders. DesktopBot never archives the folder itself, and moves anything inside it
+to the Trash once it has been there for `maxAgeDays`, so it stays recoverable:
+
+```json
+"otherFiles": {
+  "dropFolders": [{ "path": "~/Desktop/tmp", "maxAgeDays": 7 }]
+}
+```
+
 ## Organize a cluttered staging folder
 
 The reusable folder organizer defaults to `~/Desktop/Cleanup`. It looks only at
